@@ -138,11 +138,26 @@ void destroy_config(config* cfg){
 // The result is encoded in the following way:
 // 1. For every tick there are pairs of ints indicating the peer.
 // 2. Each ``tick'' is ended by an end mark of -1.
+// 3. In-group pairs are scheduled first, then across-group pairs.
 // The schedule table is finally send to all nodes so that they can start scheduling.
 int find_optimal_schedule(config* cfg, int** result){
-    (void)cfg;
-    (void)result;
-    return 0;
+    vec_int schedule = NEW_VEC;
+    int* same_in_group=calloc(sizeof(int) * (size_t)cfg->max_groups);
+    for(int i=0; i<cfg->number_nodes; i++){
+        same_in_group[cfg->grouping]
+    }
+
+    for(int i=0; i<cfg->number_nodes; i++){
+        for(int j=i+1; j<cfg->number_nodes; j++){
+            if(cfg->grouping[i]!=cfg->grouping[j]){
+                vec_push(&schedule, i);
+                vec_push(&schedule, j);
+                vec_push(&schedule, -1);
+            }
+        }
+    }
+    *result=schedule->data;
+    return schedule->size;
 }
 #define MAIN_THREAD if(world_rank==0)
 #define SUB_THREADS if(world_rank!=0)
