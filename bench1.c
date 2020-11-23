@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include "vec.h"
 
 typedef struct configuration{
     int number_nodes;
@@ -55,13 +56,18 @@ int get_config(int argc, char** argv, config** output){
                 cfg->grouping[i]=-1;
             }
             char* s1, *s2;
-            char* s_group = strtok_r(optarg, ";", &s1);
+            char* s_group = strtok_r(optarg, ":", &s1);
             while(s_group){
                 char* s_elm = strtok_r(s_group, ",", &s2);
                 while(s_elm){
                     int index;
                     if(sscanf(s_elm, "%d", &index)!=1){
                         goto bad_grouping;
+                    }
+                    if(index>=cfg->number_nodes){
+                        fprintf(stderr, "Bad index %d! \n", index);
+                        err=4;
+                        goto error;
                     }
                     if(cfg->grouping[index]!=-1){
                         fprintf(stderr, "Index %d appeared twice in different groups %d and %d!\n", index, cfg->grouping[index], current_group);
@@ -73,7 +79,7 @@ int get_config(int argc, char** argv, config** output){
                     s_elm = strtok_r(NULL, ",", &s2);
                 }
                 current_group++;
-                s_group=strtok_r(NULL, ";", &s1);
+                s_group=strtok_r(NULL, ":", &s1);
             }
             if(counted_nodes!=cfg->number_nodes){
                 fprintf(stderr, "Not all nodes are put into groups! Expected %d, found %d.\n", cfg->number_nodes, counted_nodes);
@@ -142,47 +148,118 @@ void destroy_config(config* cfg){
 // The schedule table is finally send to all nodes so that they can start scheduling.
 int find_optimal_schedule(config* cfg, int** result){
     vec_int schedule = NEW_VEC;
-    int* same_in_group=calloc(sizeof(int) * (size_t)cfg->max_groups);
-    for(int i=0; i<cfg->number_nodes; i++){
-        same_in_group[cfg->grouping]
-    }
 
+    vec_int* collections = calloc(sizeof(vec_int), (size_t)cfg->max_groups);
+    for(int i=0; i<cfg->number_nodes; i++){
+        vec_push(&collections[cfg->grouping[i]],i);
+    }
+    vec_int* edges = calloc(sizeof(vec_int), (size_t)cfg->max_groups);
+    for(int i=0; i<cfg->max_groups; i++){
+        for(size_t j=0; j<collections[i].size; j++){
+            for(size_t k=1; k<collections[i].size; k++){
+                vec_push(&edges[i], collections[i].data[j]);
+                vec_push(&edges[i], collections[i].data[k]);
+            }
+        }
+    }
+    size_t offset=0;
+    while(1){
+        int flag=0;
+        for(int i=0; i<cfg->max_groups; i++){
+            if(edges[i].size>offset){
+                flag=1;
+                vec_push(&schedule, edges[i].data[offset]);
+                vec_push(&schedule, edges[i].data[offset+1]);
+            }
+        }
+        offset=offset+2;
+        
+        if(flag){
+            vec_push(&schedule, -1);
+        }else{
+            break;
+        }
+    }
+    for(int i=0; i<cfg->max_groups; i++){
+        vec_destroy(&collections[i]);
+        vec_destroy(&edges[i]);
+    }
+    free(collections);
+    free(edges);
+    // schedule across-pairs.
     for(int i=0; i<cfg->number_nodes; i++){
         for(int j=i+1; j<cfg->number_nodes; j++){
             if(cfg->grouping[i]!=cfg->grouping[j]){
                 vec_push(&schedule, i);
                 vec_push(&schedule, j);
                 vec_push(&schedule, -1);
+                vec_push(&schedule, j);
+                vec_push(&schedule, i);
+                vec_push(&schedule, -1);
+                printf("Across pair (%d,%d) detected.\n", i, j);
             }
         }
     }
-    *result=schedule->data;
-    return schedule->size;
+    *result=schedule.data;
+    return (int)schedule.size;
 }
 #define MAIN_THREAD if(world_rank==0)
 #define SUB_THREADS if(world_rank!=0)
 #define ALL_THREADS
-int main(int argc, char** argv){
-    MPI_Init(NULL, NULL);
-    int world_size;
+
+int mpi_main(int argc, char** argv){
+int world_size;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     int world_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
     
-    config* cfg;
-    int* schedule_table;
+    config* cfg=NULL;
+    int* schedule_table=NULL;
     int table_size=0;
+    int real_table_count;
+    int error=0;
     MAIN_THREAD {
-        int ret=get_config(argc, argv, &cfg);
+        error=get_config(argc, argv, &cfg);
         if(!cfg){
-            return ret;
+            goto bcast;
         }
         
         table_size=find_optimal_schedule(cfg, &schedule_table);
+        printf("Optimal Schedule: %d\n", table_size);
+        int index=0;
+        while(index<table_size){
+            if(schedule_table[index]==-1){
+                putchar('\n');
+                index+=1;
+            }else{
+                printf("(%d,%d) ", schedule_table[index], schedule_table[index+1]);
+                index+=2;
+            }
+            
+        }
         // broadcast the schedule table to all nodes.
 
     }
-    (void)table_size;
+bcast:
+    real_table_count=table_size;
+    MPI_Bcast(&real_table_count,1,MPI_INT,0,MPI_COMM_WORLD);
+    if(real_table_count==0){
+        MAIN_THREAD{
+            if(error==0){
+                printf("Schedule table size=0! Exiting...\n");
+            }else{
+                printf("Error code = %d\n", error);
+            }
+            return error;
+        }
+        printf("Main thread exited abnormally. Exiting...\n");
+        return 0;
+    }
+    SUB_THREADS{
+        schedule_table=malloc(sizeof(int)*((size_t)real_table_count));
+    }
+    MPI_Bcast(schedule_table, real_table_count, MPI_INT, 0, MPI_COMM_WORLD);
+    printf("Thread %d: %d\n", world_rank, real_table_count);
     SUB_THREADS {
         // receive the scheduling table
 
@@ -197,5 +274,13 @@ int main(int argc, char** argv){
     MAIN_THREAD {
         // main thread read from mpiio and print the output.
     }
+    return 0;
+
+}
+
+int main(int argc, char** argv){
+    MPI_Init(NULL, NULL);
+    int ret=mpi_main(argc, argv);
     MPI_Finalize();
+    return ret;
 }

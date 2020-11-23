@@ -7,7 +7,7 @@ void vec_push(vec_int* v, int val){
             v->data=malloc(sizeof(int));
         }else{
             v->cap=v->cap*2;
-            realloc(v->data, v->cap*sizeof(int));
+            v->data=realloc(v->data, v->cap*sizeof(int));
         }
     }
     v->data[v->size]=val;
