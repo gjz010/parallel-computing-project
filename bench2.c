@@ -19,27 +19,6 @@ void trace_bench(const char* name, int size, int* nodes, ull node_count){
     MPI_Barrier(MPI_COMM_WORLD);
 }
 
-int fork_communicator(int world_rank, int* nodes, ull node_count, MPI_Comm* new_comm){
-    int selected=0;
-    int key = 0;
-    for(ull i=0; i<node_count; i++){
-        if(nodes[i]==world_rank){
-            key = (int)i;
-            selected=1;
-            break;
-        }
-    }
-    if(selected){
-        MPI_Comm_split(MPI_COMM_WORLD, 1, key, new_comm);
-        int new_rank=0;
-        MPI_Comm_rank(*new_comm, &new_rank);
-        return new_rank;
-    }else{
-        MPI_Comm_split(MPI_COMM_WORLD, MPI_UNDEFINED, 0, new_comm);
-        return -1;
-    }
-}
-
 
 typedef void(*BENCHMARK)(int, int, int*, ull);
 #define ALL_THREADS

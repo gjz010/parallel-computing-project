@@ -9,4 +9,6 @@ unsigned int hash(unsigned int x);
 int hash_i(int x);
 unsigned long long get_time();
 double bandwidth(int send_cnt, int send_size, ull cost_time);
+#include <mpi.h>
+int fork_communicator(int world_rank, int* nodes, ull node_count, MPI_Comm* new_comm);
 #endif

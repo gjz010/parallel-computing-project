@@ -5,3 +5,4 @@ rr
 *.o
 .vscode/
 *.out
+random_reduction/
