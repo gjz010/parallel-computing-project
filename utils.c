@@ -1,4 +1,5 @@
 #include <time.h>
+#include "utils.h"
 unsigned int hash(unsigned int x) {
     x = ((x >> 16) ^ x) * 0x45d9f3b;
     x = ((x >> 16) ^ x) * 0x45d9f3b;
@@ -17,4 +18,8 @@ unsigned long long get_time(){
     t_s=(unsigned long long)t.tv_sec;
     t_ns=(unsigned long long)t.tv_nsec;
     return t_s*1000000000ULL+t_ns;
+}
+
+double bandwidth(int send_cnt, int send_size, ull cost_time){
+    return (double)(send_cnt)*(double)(send_size) / (((double)cost_time)/1000);
 }

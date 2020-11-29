@@ -4,4 +4,5 @@ typedef unsigned long long ull;
 unsigned int hash(unsigned int x);
 int hash_i(int x);
 unsigned long long get_time();
+double bandwidth(int send_cnt, int send_size, ull cost_time);
 #endif

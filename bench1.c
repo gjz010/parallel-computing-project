@@ -273,7 +273,7 @@ bcast:
     }
 
 
-    ull* perf_vec = calloc(sizeof(ull), 2*(size_t)world_size);
+    double* perf_vec = calloc(sizeof(double), 2*(size_t)world_size);
     ALL_THREADS {
         MPI_Bcast(&send_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
         MPI_Bcast(&send_cnt, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -335,29 +335,40 @@ bcast:
 //printf("Proc %d\n", world_rank);
             ull start_tick = 0;
             ull end_tick = 0;
-            SENDING_THREAD{
-                start_tick=get_time();
-                for(int i=0; i<send_cnt; i++)
-                    MPI_Send(send_data, send_size, MPI_BYTE, current_to, i, MPI_COMM_WORLD);
-                end_tick=get_time();
-            }
-            RECEIVING_THREAD{
-                start_tick=get_time();
-                for(int i=0; i<send_cnt; i++)
-                    MPI_Recv(recv_data, send_size, MPI_BYTE, current_from, i, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                end_tick=get_time();
-            }
+            ull total_ticks = 0;
+
+                for(int i=0; i<send_cnt; i++){
+                    SENDING_THREAD{
+                        start_tick=get_time();
+                        MPI_Send(send_data, send_size, MPI_BYTE, current_to, i, MPI_COMM_WORLD);
+                        end_tick=get_time();
+                        assert(end_tick>=start_tick);
+                        total_ticks+=end_tick-start_tick;
+                    }
+                    RECEIVING_THREAD{
+                        start_tick=get_time();
+                        MPI_Recv(recv_data, send_size, MPI_BYTE, current_from, i, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        end_tick=get_time();
+                        assert(end_tick>=start_tick);
+                        total_ticks+=end_tick-start_tick;
+                        for(int j=0; j<send_size; j++){
+                            assert(recv_data[j] == send_data[j]);
+                        }
+                    }
+                    MPI_Barrier(MPI_COMM_WORLD);
+                }
+
+            
             //printf("Proc %d\n", world_rank);
             MPI_Barrier(MPI_COMM_WORLD);
             SENDING_THREAD{
                 //printf("%lld %lld %d\n", start_tick, end_tick, end_tick>=start_tick);
-                assert(end_tick>=start_tick);
-                perf_vec[current_to]=end_tick-start_tick;
+                perf_vec[current_to]=bandwidth(send_cnt, send_size, total_ticks);
                 //printf("Send time (%d->%d): %lld\n", world_rank, current_to, end_tick-start_tick);
             }
             RECEIVING_THREAD{
                 assert(end_tick>=start_tick);
-                perf_vec[current_from + world_size]=end_tick-start_tick;
+                perf_vec[current_from + world_size]=bandwidth(send_cnt, send_size, total_ticks);
                 //printf("Recv time (%d->%d): %lld\n", current_from, world_rank, end_tick-start_tick);
             }
             MPI_Barrier(MPI_COMM_WORLD);
@@ -373,24 +384,22 @@ bcast:
         MPI_File_open(MPI_COMM_WORLD, "bench1.out", MPI_MODE_CREATE|MPI_MODE_RDWR, MPI_INFO_NULL, &fh); 
         //MPI_Datatype filetype_vec;
         //MPI_Type_contiguous(world_size*2, MPI_LONG_LONG_INT, &filetype_vec);
-        MPI_File_set_view(fh, (long long)(2*(ull)world_rank * (ull)world_size * sizeof(ull)), MPI_LONG_LONG_INT, MPI_LONG_LONG_INT, "native", MPI_INFO_NULL);
-        MPI_File_write_all(fh, perf_vec, 2*world_size, MPI_LONG_LONG_INT, MPI_STATUS_IGNORE);
-        MPI_File_set_view(fh, 0, MPI_LONG_LONG_INT, MPI_LONG_LONG_INT, "native", MPI_INFO_NULL);
+        MPI_File_set_view(fh, (long long)(2*(ull)world_rank * (ull)world_size * sizeof(double)), MPI_DOUBLE, MPI_DOUBLE, "native", MPI_INFO_NULL);
+        MPI_File_write_all(fh, perf_vec, 2*world_size, MPI_DOUBLE, MPI_STATUS_IGNORE);
+        MPI_File_set_view(fh, 0, MPI_DOUBLE, MPI_DOUBLE, "native", MPI_INFO_NULL);
     }
     free(perf_vec);
     MPI_Barrier(MPI_COMM_WORLD);
     MAIN_THREAD {
         
         // main thread read from mpiio and print the output.
-        ull* perf_mat = malloc(2*(size_t)world_size*(size_t)world_size*sizeof(ull));
+        double* perf_mat = malloc(2*(size_t)world_size*(size_t)world_size*sizeof(double));
         MPI_File_read_at(fh, 0, perf_mat, world_size * world_size * 2, MPI_LONG_LONG_INT, MPI_STATUS_IGNORE);
         printf("Send Matrix (MBps):\n");
-        double total_size = send_size * send_cnt;
         for(int i=0; i<world_size; i++){
             for(int j=0; j<world_size; j++){
                 if(i==j) {printf("-\t");continue;}
-                double bandwidth =total_size/(((double)perf_mat[2*world_size*i+j] )/1000);
-                printf("%lf\t", bandwidth);
+                printf("%lf\t", perf_mat[2*world_size*i+j]);
             }
             putchar('\n');
         }
@@ -398,8 +407,7 @@ bcast:
         for(int i=0; i<world_size; i++){
             for(int j=0; j<world_size; j++){
                 if(i==j) {printf("-\t");continue;}
-                double bandwidth =total_size/(((double)perf_mat[2*world_size*i+j+world_size] )/1000);
-                printf("%lf\t", bandwidth);
+                printf("%lf\t", perf_mat[2*world_size*i+j+world_size]);
             }
             putchar('\n');
         }
