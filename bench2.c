@@ -5,15 +5,48 @@
 #include "vec.h"
 #include "utils.h"
 
-typedef void(*BENCHMARK)(int, int*, ull);
+int fork_communicator(int world_rank, int* nodes, ull node_count, MPI_Comm* new_comm){
+    int selected=0;
+    int key = 0;
+    for(ull i=0; i<node_count; i++){
+        if(nodes[i]==world_rank){
+            key = (int)i;
+            selected=1;
+            break;
+        }
+    }
+    if(selected){
+        MPI_Comm_split(MPI_COMM_WORLD, 1, key, new_comm);
+        int new_rank=0;
+        MPI_Comm_rank(*new_comm, &new_rank);
+        return new_rank;
+    }else{
+        MPI_Comm_split(MPI_COMM_WORLD, MPI_UNDEFINED, 0, new_comm);
+        return -1;
+    }
+}
+
+typedef void(*BENCHMARK)(int, int, int*, ull);
 
 #define _CONCAT(a,b) a##b
 #define CONCAT(a,b) _CONCAT(a,b)
 #define BENCH(x) CONCAT(bench_,x)
-#define DEF_BENCH(x) void BENCH(x)(int size, int* nodes, ull node_count)
-#define BENCH_DEFAULT do{(void)size; (void)nodes; (void)node_count;}while(0)
-
+#define DEF_BENCH(x) void BENCH(x)(int world_rank, int size, int* nodes, ull node_count)
+#define BENCH_DEFAULT do{(void)world_rank; (void)size; (void)nodes; (void)node_count;}while(0)
+#define ROOT_THREAD if(rank==0)
+#define LEAF_THREADS if(rank!=0)
 DEF_BENCH(bcast){
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Comm new_comm;
+    int rank;
+    if((rank=fork_communicator(world_rank, nodes, node_count, &new_comm))!=-1){
+        printf("%d is %d\n", world_rank, rank);
+
+        MPI_Barrier(new_comm);
+        MPI_Comm_free(&new_comm);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    
     BENCH_DEFAULT;
 }
 DEF_BENCH(gather){
@@ -154,7 +187,7 @@ no_error:
             end=curr;
             curr++;
             BENCHMARK benchmarks[]={BENCH(bcast),BENCH(gather),BENCH(reduce),BENCH(allreduce),BENCH(scan),BENCH(alltoall)};
-            benchmarks[type](size, &schedule[start], end-start);
+            benchmarks[type](world_rank, size, &schedule[start], end-start);
         }
     }
     return 0;
