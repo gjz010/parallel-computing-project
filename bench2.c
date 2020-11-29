@@ -2,8 +2,22 @@
 #include <mpi.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include "vec.h"
 #include "utils.h"
+
+void trace_bench(const char* name, int size, int* nodes, ull node_count){
+    MPI_Barrier(MPI_COMM_WORLD);
+    int world_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+    if(world_rank==0){
+        printf("Benchmarking with strategy \"%s\" (packet size=%d). Communicator=[", name, size);
+        for(ull i=0; i<node_count; i++){
+            printf("%d%s", nodes[i], (i+1==node_count?"].\n":", "));
+        }
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+}
 
 int fork_communicator(int world_rank, int* nodes, ull node_count, MPI_Comm* new_comm){
     int selected=0;
@@ -26,47 +40,235 @@ int fork_communicator(int world_rank, int* nodes, ull node_count, MPI_Comm* new_
     }
 }
 
-typedef void(*BENCHMARK)(int, int, int*, ull);
 
-#define _CONCAT(a,b) a##b
-#define CONCAT(a,b) _CONCAT(a,b)
+typedef void(*BENCHMARK)(int, int, int*, ull);
+#define ALL_THREADS
+
 #define BENCH(x) CONCAT(bench_,x)
 #define DEF_BENCH(x) void BENCH(x)(int world_rank, int size, int* nodes, ull node_count)
 #define BENCH_DEFAULT do{(void)world_rank; (void)size; (void)nodes; (void)node_count;}while(0)
 #define ROOT_THREAD if(rank==0)
 #define LEAF_THREADS if(rank!=0)
+#define TRACE_BENCH(x) do{trace_bench(STR(x), size, nodes, node_count);}while(0)
 DEF_BENCH(bcast){
     MPI_Barrier(MPI_COMM_WORLD);
+    TRACE_BENCH(bcast);
     MPI_Comm new_comm;
     int rank;
     if((rank=fork_communicator(world_rank, nodes, node_count, &new_comm))!=-1){
-        printf("%d is %d\n", world_rank, rank);
-
+        //printf("%d is %d\n", world_rank, rank);
+        char* buffer=malloc((ull)(unsigned int)size);
+        ROOT_THREAD {
+            for(int i=0; i<size; i++) buffer[i]=(char)hash_i(i);
+        }
+        ull start_time;
+        ull end_time;
         MPI_Barrier(new_comm);
+        start_time=get_time();
+        MPI_Bcast(buffer, size, MPI_BYTE, 0, new_comm);
+        end_time=get_time();
+        MPI_Barrier(new_comm);
+        ALL_THREADS {
+            for(int i=0; i<size; i++) assert(buffer[i]==(char)hash_i(i));
+        }
+        printf("world rank %d(local rank = %d) = %lf (cost time=%lf)\n", world_rank, rank, bandwidth(1, size, end_time-start_time), ((double)(end_time-start_time))/1000000000);
+        free(buffer);
         MPI_Comm_free(&new_comm);
     }
     MPI_Barrier(MPI_COMM_WORLD);
-    
-    BENCH_DEFAULT;
 }
 DEF_BENCH(gather){
-    BENCH_DEFAULT;
+    MPI_Barrier(MPI_COMM_WORLD);
+    TRACE_BENCH(gather);
+    MPI_Comm new_comm;
+    int rank;
+    if((rank=fork_communicator(world_rank, nodes, node_count, &new_comm))!=-1){
+        //printf("%d is %d\n", world_rank, rank);
+        char* send_buffer=malloc((ull)(unsigned int)size);
+        char* recv_buffer=0;
+        ALL_THREADS {
+            for(int i=0; i<size; i++) send_buffer[i]=(char)hash_i(i + rank * 114514);
+        }
+        MPI_Barrier(new_comm);
+        ull start_time;
+        ull end_time;
+        ROOT_THREAD{
+            recv_buffer = malloc((ull)(unsigned int) size * node_count);
+            start_time=get_time();
+            MPI_Gather(send_buffer, size, MPI_BYTE, recv_buffer, size, MPI_BYTE, 0, new_comm);
+            end_time=get_time();
+
+        }
+        LEAF_THREADS{
+            start_time=get_time();
+            MPI_Gather(send_buffer, size, MPI_BYTE, NULL, size, MPI_BYTE, 0, new_comm);
+            end_time=get_time();
+        }
+        
+        
+        ROOT_THREAD {
+            for(int i=0; i<size * (int)node_count; i++) assert(recv_buffer[i]==(char)hash_i((i%size) + 114514 * (i/size)));
+        }
+        printf("world rank %d(local rank = %d) = %lf (cost time=%lf)\n", world_rank, rank, bandwidth(1, size, end_time-start_time), ((double)(end_time-start_time))/1000000000);
+        free(send_buffer);
+        free(recv_buffer);
+        MPI_Comm_free(&new_comm);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
 }
 DEF_BENCH(reduce){
-    BENCH_DEFAULT;
+    MPI_Barrier(MPI_COMM_WORLD);
+    TRACE_BENCH(reduce);
+    MPI_Comm new_comm;
+    int rank;
+    if((rank=fork_communicator(world_rank, nodes, node_count, &new_comm))!=-1){
+        //printf("%d is %d\n", world_rank, rank);
+        char* send_buffer=malloc((ull)(unsigned int)size);
+        char* recv_buffer=0;
+        ALL_THREADS {
+            for(int i=0; i<size; i++) send_buffer[i]=(char)hash_i(i + rank * 114514);
+        }
+        MPI_Barrier(new_comm);
+        ull start_time;
+        ull end_time;
+        ROOT_THREAD{
+            recv_buffer=malloc((ull)(unsigned int)size);
+
+
+        }
+
+        start_time=get_time();
+        MPI_Reduce(send_buffer, recv_buffer, size, MPI_BYTE, MPI_SUM, 0, new_comm);
+        end_time=get_time();
+        
+        
+        ROOT_THREAD {
+            for(int i=0; i<size; i++){
+                char r=0;
+                for(ull j=0; j<node_count; j++){
+                    r=(char)(r+((char)hash_i((i) + 114514 * ((int)j))));
+                }
+                assert(recv_buffer[i]==r);
+            }
+        }
+        printf("world rank %d(local rank = %d) = %lf (cost time=%lf)\n", world_rank, rank, bandwidth(1, size, end_time-start_time), ((double)(end_time-start_time))/1000000000);
+        free(send_buffer);
+        free(recv_buffer);
+        MPI_Comm_free(&new_comm);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
 }
 DEF_BENCH(allreduce){
-    BENCH_DEFAULT;
+    MPI_Barrier(MPI_COMM_WORLD);
+    TRACE_BENCH(allreduce);
+    MPI_Comm new_comm;
+    int rank;
+    if((rank=fork_communicator(world_rank, nodes, node_count, &new_comm))!=-1){
+        //printf("%d is %d\n", world_rank, rank);
+        char* send_buffer=malloc((ull)(unsigned int)size);
+        char* recv_buffer=0;
+        ALL_THREADS {
+            for(int i=0; i<size; i++) send_buffer[i]=(char)hash_i(i + rank * 114514);
+        }
+        MPI_Barrier(new_comm);
+        ull start_time;
+        ull end_time;
+        recv_buffer=malloc((ull)(unsigned int)size);
+
+        start_time=get_time();
+        MPI_Allreduce(send_buffer, recv_buffer, size, MPI_BYTE, MPI_SUM, new_comm);
+        end_time=get_time();
+        
+        
+        ALL_THREADS {
+            for(int i=0; i<size; i++){
+                char r=0;
+                for(ull j=0; j<node_count; j++){
+                    r=(char)(r+((char)hash_i((i) + 114514 * ((int)j))));
+                }
+                assert(recv_buffer[i]==r);
+            }
+        }
+        printf("world rank %d(local rank = %d) = %lf (cost time=%lf)\n", world_rank, rank, bandwidth(1, size, end_time-start_time), ((double)(end_time-start_time))/1000000000);
+        free(send_buffer);
+        free(recv_buffer);
+        MPI_Comm_free(&new_comm);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
 }
 DEF_BENCH(scan){
-    BENCH_DEFAULT;
+    MPI_Barrier(MPI_COMM_WORLD);
+    TRACE_BENCH(scan);
+    MPI_Comm new_comm;
+    int rank;
+    if((rank=fork_communicator(world_rank, nodes, node_count, &new_comm))!=-1){
+        //printf("%d is %d\n", world_rank, rank);
+        char* send_buffer=malloc((ull)(unsigned int)size);
+        char* recv_buffer=0;
+        ALL_THREADS {
+            for(int i=0; i<size; i++) send_buffer[i]=(char)hash_i(i + rank * 114514);
+        }
+        MPI_Barrier(new_comm);
+        ull start_time;
+        ull end_time;
+        recv_buffer=malloc((ull)(unsigned int)size);
+
+        start_time=get_time();
+        MPI_Scan(send_buffer, recv_buffer, size, MPI_BYTE, MPI_SUM, new_comm);
+        end_time=get_time();
+        
+        
+        ALL_THREADS {
+            for(int i=0; i<size; i++){
+                char r=0;
+                for(ull j=0; j<=(ull)rank; j++){
+                    r=(char)(r+((char)hash_i((i) + 114514 * ((int)j))));
+                }
+                assert(recv_buffer[i]==r);
+            }
+        }
+        printf("world rank %d(local rank = %d) = %lf (cost time=%lf)\n", world_rank, rank, bandwidth(1, size, end_time-start_time), ((double)(end_time-start_time))/1000000000);
+        free(send_buffer);
+        free(recv_buffer);
+        MPI_Comm_free(&new_comm);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
 }
 DEF_BENCH(alltoall){
-    BENCH_DEFAULT;
+    MPI_Barrier(MPI_COMM_WORLD);
+    TRACE_BENCH(alltoall);
+    MPI_Comm new_comm;
+    int rank;
+    if((rank=fork_communicator(world_rank, nodes, node_count, &new_comm))!=-1){
+        //printf("%d is %d\n", world_rank, rank);
+        char* send_buffer=malloc((ull)(unsigned int)size * node_count);
+        char* recv_buffer=0;
+        ALL_THREADS {
+            for(int i=0; i<(int)size * (int)node_count; i++) send_buffer[i]=(char)hash_i(i + rank * 114514);
+        }
+        MPI_Barrier(new_comm);
+        ull start_time;
+        ull end_time;
+        recv_buffer=malloc((ull)(unsigned int)size * node_count);
+
+        start_time=get_time();
+        MPI_Alltoall(send_buffer, size, MPI_BYTE, recv_buffer, size, MPI_BYTE, new_comm);
+        end_time=get_time();
+        
+        
+        ALL_THREADS {
+            for(int i=0; i<size * (int)node_count; i++) assert(recv_buffer[i]==(char)hash_i(((i%size) + rank * size) + 114514 * (i/size)));
+        }
+        printf("world rank %d(local rank = %d) = %lf (cost time=%lf)\n", world_rank, rank, bandwidth(1, size, end_time-start_time), ((double)(end_time-start_time))/1000000000);
+        free(send_buffer);
+        free(recv_buffer);
+        MPI_Comm_free(&new_comm);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
 }
 #define MAIN_THREAD if(world_rank==0)
 #define SUB_THREADS if(world_rank!=0)
-#define ALL_THREADS
+
 int mpi_main(int argc, char** argv){
     int world_size;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -190,6 +392,7 @@ no_error:
             benchmarks[type](world_rank, size, &schedule[start], end-start);
         }
     }
+    free(schedule);
     return 0;
 
 }

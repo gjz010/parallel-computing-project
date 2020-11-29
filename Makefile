@@ -6,7 +6,7 @@ utils.o: utils.c
 	mpicc $(CFLAGS) -c -o $@ $^
 bench1: bench1.c vec.o utils.o
 	mpicc $(CFLAGS) -o $@ $^
-bench2: bench2.c vec.o
+bench2: bench2.c vec.o utils.o
 	mpicc $(CFLAGS) -o $@ $^
 bench3: bench3.c
 	mpicc $(CFLAGS) -o $@ $^
