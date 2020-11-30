@@ -10,7 +10,7 @@ bench2: bench2.c vec.o utils.o
 	mpicc $(CFLAGS) -o $@ $^
 bench3: bench3.c
 	mpicc $(CFLAGS) -o $@ $^
-rr:	rr.c
+rr:	rr.c utils.o
 	mpicc $(CFLAGS) -o $@ $^
 clean:
 	rm bench1 bench2 bench3 rr vec.o utils.o -f
