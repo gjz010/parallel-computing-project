@@ -1,5 +1,6 @@
 CFLAGS = -Wall -Wextra -Werror -Wconversion -pedantic -O3
-all: bench1 bench2 bench3 rr
+CXXFLAGS = -Wall -Wextra -Werror -Wconversion -pedantic -O3
+all: bench1 bench2 bench3 rr rr_dist/Reduction rr_dist/Validation_mpi RandomGen
 vec.o: vec.c
 	mpicc $(CFLAGS) -c -o $@ $^
 utils.o: utils.c
@@ -12,5 +13,11 @@ bench3: bench3.c
 	mpicc $(CFLAGS) -o $@ $^
 rr:	rr.c utils.o
 	mpicc $(CFLAGS) -o $@ $^
+rr_dist/Reduction: rr_dist/Reduction.cpp
+	g++ -O3 -o $@ $^
+rr_dist/Validation_mpi: rr_dist/Validation_mpi.cpp
+	g++ -O3 -o $@ $^
+RandomGen: RandomGen.c
+	gcc $(CFLAGS) -o $@ $^
 clean:
-	rm bench1 bench2 bench3 rr vec.o utils.o -f
+	rm bench1 bench2 bench3 rr vec.o utils.o rr_dist/Reduction rr_dist/Validation_mpi RandomGen -f
