@@ -23,7 +23,10 @@ rr_dist/Validation_mpi: rr_dist/Validation_mpi.cpp
 	g++ -O3 -o $@ $^
 RandomGen: RandomGen.c
 	gcc $(CFLAGS) -o $@ $^
+rr_test:
+	./rr_test.sh
 clean:
 	rm bench1 bench2 bench3 rr vec.o utils.o rr_io.o rr.o rr_dist/Reduction rr_dist/Validation_mpi RandomGen -f
 clean_mat:
 	rm *.mat matrix -f
+distclean: clean clean_mat

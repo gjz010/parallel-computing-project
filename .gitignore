@@ -8,3 +8,6 @@ rr
 random_reduction/
 *.mat
 matrix
+rr_dist/Reduction
+rr_dist/Validation_mpi
+RandomGen
