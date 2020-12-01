@@ -6,3 +6,5 @@ rr
 .vscode/
 *.out
 random_reduction/
+*.mat
+matrix

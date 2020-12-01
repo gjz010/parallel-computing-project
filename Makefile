@@ -11,8 +11,12 @@ bench2: bench2.c vec.o utils.o
 	mpicc $(CFLAGS) -o $@ $^
 bench3: bench3.c
 	mpicc $(CFLAGS) -o $@ $^
-rr:	rr.c utils.o
-	mpicc $(CFLAGS) -o $@ $^
+rr_io.o: rr_io.cpp
+	mpic++ $(CXXFLAGS) -c -o $@ $^
+rr.o: rr.c
+	mpicc $(CFLAGS) -c -o $@ $^
+rr:	rr.o utils.o rr_io.o
+	mpic++ $(CXXFLAGS) -o $@ $^
 rr_dist/Reduction: rr_dist/Reduction.cpp
 	g++ -O3 -o $@ $^
 rr_dist/Validation_mpi: rr_dist/Validation_mpi.cpp
@@ -20,4 +24,6 @@ rr_dist/Validation_mpi: rr_dist/Validation_mpi.cpp
 RandomGen: RandomGen.c
 	gcc $(CFLAGS) -o $@ $^
 clean:
-	rm bench1 bench2 bench3 rr vec.o utils.o rr_dist/Reduction rr_dist/Validation_mpi RandomGen -f
+	rm bench1 bench2 bench3 rr vec.o utils.o rr_io.o rr.o rr_dist/Reduction rr_dist/Validation_mpi RandomGen -f
+clean_mat:
+	rm *.mat matrix -f

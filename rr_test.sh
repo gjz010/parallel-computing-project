@@ -10,4 +10,4 @@ echo ">>>>>>>>>>> Running on MPI..."
 mpirun -n 4 ./rr 1000 10000
 echo ">>>>>>>>>>> Validating..."
 rr_dist/Validation_mpi -p
-#rm *.mat matrix
+rm *.mat matrix

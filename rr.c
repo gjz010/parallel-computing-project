@@ -7,7 +7,11 @@
 #define SUB_THREADS if(world_rank!=0)
 #define ALL_THREADS
 
-  
+void read_matrix(const char* path, int M, int N, int Npadded, double* mat);
+void write_matrix(const char* path, int M, const double* mat);
+void write_matrix_i(const char* path, int M, const double* mat);
+void write_matrix_j(const char* path, int M, const double* mat);
+
 int main(int argc, char** argv){
     MPI_Init(NULL, NULL);
     int world_size;
@@ -25,20 +29,17 @@ int main(int argc, char** argv){
         assert(sscanf(argv[1], "%d", &M)==1);
         assert(sscanf(argv[2], "%d", &N)==1);
         
-        FILE* f=fopen("matrix", "r");
-        assert(f);
+        //FILE* f=fopen("matrix", "r");
+        //assert(f);
         Nchunk = (N+world_size-1)/world_size;
         Npadded = Nchunk * world_size;
         printf("M=%d N=%d world_size=%d Nchunk=%d Npadded=%d\n", M, N, world_size, Nchunk, Npadded);
         matrix = calloc((size_t)(M * Npadded), sizeof(double));
-        for(int i=0; i<M; i++){
-            for(int j=0; j<N; j++){
-                assert(fscanf(f, "%lf", &matrix[i*Npadded+j])==1);
-            }
-        }
-        fclose(f);
+        read_matrix("matrix", M, N, Npadded, matrix);
+        //fclose(f);
+        printf("IO done\n");
     }
-    printf("IO done\n");
+    MPI_Barrier(MPI_COMM_WORLD);
     ull end_time=0, start_time=0;
     MAIN_THREAD{
         start_time=get_time();
@@ -87,34 +88,13 @@ int main(int argc, char** argv){
         MPI_Reduce(MPI_IN_PLACE, ans, M*M+M, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         end_time=get_time();
         printf("Computation finished in %lf ms.\n", (double)(end_time-start_time)/1000000.0);
-        FILE* f_alpha=fopen("AlphasMPI.mat", "w");
-        FILE* f_beta=fopen("BetasMPI.mat", "w");
-        FILE* f_gamma=fopen("GammasMPI.mat", "w");
         //fprintf(f_alpha, "%d %d\n", M, N);
         printf("Writing alpha\n");
-        for(int i=0; i<M; i++){
-            for(int j=0; j<N; j++){
-                fprintf(f_alpha, "%.3lf\t", ans[M*M+i]);
-            }
-            fprintf(f_alpha, "\n");
-        }
+        write_matrix_i("AlphasMPI.mat", M, &ans[M*M]);
         printf("Writing beta\n");
-        for(int i=0; i<M; i++){
-            for(int j=0; j<N; j++){
-                fprintf(f_beta, "%.3lf\t", ans[M*M+j]);
-            }
-            fprintf(f_beta, "\n");
-        }
+        write_matrix_j("BetasMPI.mat", M, &ans[M*M]);
         printf("Writing gamma\n");
-        for(int i=0; i<M; i++){
-            for(int j=0; j<N; j++){
-                fprintf(f_gamma, "%.3lf\t", ans[i*M+j]);
-            }
-            fprintf(f_gamma, "\n");
-        }
-        fclose(f_alpha);
-        fclose(f_beta);
-        fclose(f_gamma);
+        write_matrix("GammasMPI.mat", M, ans);
     }
 
     
