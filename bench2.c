@@ -69,8 +69,8 @@ DEF_BENCH(gather){
             for(int i=0; i<size; i++) send_buffer[i]=(char)hash_i(i + rank * 114514);
         }
         MPI_Barrier(new_comm);
-        ull start_time;
-        ull end_time;
+        ull start_time=0;
+        ull end_time=0;
         ROOT_THREAD{
             recv_buffer = malloc((ull)(unsigned int) size * node_count);
             start_time=get_time();
@@ -117,7 +117,7 @@ DEF_BENCH(reduce){
         }
 
         start_time=get_time();
-        MPI_Reduce(send_buffer, recv_buffer, size, MPI_BYTE, MPI_SUM, 0, new_comm);
+        MPI_Reduce(send_buffer, recv_buffer, size, MPI_BYTE, MPI_BXOR, 0, new_comm);
         end_time=get_time();
         
         
@@ -125,7 +125,7 @@ DEF_BENCH(reduce){
             for(int i=0; i<size; i++){
                 char r=0;
                 for(ull j=0; j<node_count; j++){
-                    r=(char)(r+((char)hash_i((i) + 114514 * ((int)j))));
+                    r=(char)(r^((char)hash_i((i) + 114514 * ((int)j))));
                 }
                 assert(recv_buffer[i]==r);
             }
@@ -155,7 +155,7 @@ DEF_BENCH(allreduce){
         recv_buffer=malloc((ull)(unsigned int)size);
 
         start_time=get_time();
-        MPI_Allreduce(send_buffer, recv_buffer, size, MPI_BYTE, MPI_SUM, new_comm);
+        MPI_Allreduce(send_buffer, recv_buffer, size, MPI_BYTE, MPI_BXOR, new_comm);
         end_time=get_time();
         
         
@@ -163,7 +163,7 @@ DEF_BENCH(allreduce){
             for(int i=0; i<size; i++){
                 char r=0;
                 for(ull j=0; j<node_count; j++){
-                    r=(char)(r+((char)hash_i((i) + 114514 * ((int)j))));
+                    r=(char)(r^((char)hash_i((i) + 114514 * ((int)j))));
                 }
                 assert(recv_buffer[i]==r);
             }
@@ -193,7 +193,7 @@ DEF_BENCH(scan){
         recv_buffer=malloc((ull)(unsigned int)size);
 
         start_time=get_time();
-        MPI_Scan(send_buffer, recv_buffer, size, MPI_BYTE, MPI_SUM, new_comm);
+        MPI_Scan(send_buffer, recv_buffer, size, MPI_BYTE, MPI_BXOR, new_comm);
         end_time=get_time();
         
         
@@ -201,7 +201,7 @@ DEF_BENCH(scan){
             for(int i=0; i<size; i++){
                 char r=0;
                 for(ull j=0; j<=(ull)rank; j++){
-                    r=(char)(r+((char)hash_i((i) + 114514 * ((int)j))));
+                    r=(char)(r^((char)hash_i((i) + 114514 * ((int)j))));
                 }
                 assert(recv_buffer[i]==r);
             }
@@ -263,7 +263,7 @@ int mpi_main(int argc, char** argv){
         }
         for(int i=1; i<argc; i++){
             char* s1;
-            char* s_group = strtok_r(argv[i], ",", &s1);
+            char* s_group = my_strtok_r(argv[i], ",", &s1);
             int flag=0;
             while(s_group){
                 if(flag==0){
@@ -316,7 +316,7 @@ int mpi_main(int argc, char** argv){
                     vec_push(&v, next);
                     flag++;
                 }
-                s_group=strtok_r(NULL, ",", &s1);
+                s_group=my_strtok_r(NULL, ",", &s1);
             }
             if(flag<3){
                 fprintf(stderr, "The size and at least one node should be specified.\n");
@@ -381,3 +381,4 @@ int main(int argc, char** argv){
     MPI_Finalize();
     return ret;
 }
+

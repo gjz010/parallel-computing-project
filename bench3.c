@@ -6,6 +6,11 @@
 #include "vec.h"
 #include "utils.h"
 #define ALL_THREADS
+#define MAIN_THREAD if(world_rank==0)
+#define SUB_THREADS if(world_rank!=0)
+
+
+
 int mpi_main(int argc, char** argv){
     int world_size;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);

@@ -7,6 +7,7 @@
 #include "vec.h"
 #include "utils.h"
 #include <assert.h>
+#include <getopt.h>
 
 typedef struct configuration{
     int number_nodes;
@@ -56,9 +57,9 @@ int get_config(int number_nodes, int argc, char** argv, config** output){
                 cfg->grouping[i]=-1;
             }
             char* s1, *s2;
-            char* s_group = strtok_r(optarg, ":", &s1);
+            char* s_group = my_strtok_r(optarg, ":", &s1);
             while(s_group){
-                char* s_elm = strtok_r(s_group, ",", &s2);
+                char* s_elm = my_strtok_r(s_group, ",", &s2);
                 while(s_elm){
                     int index;
                     if(sscanf(s_elm, "%d", &index)!=1){
@@ -76,10 +77,10 @@ int get_config(int number_nodes, int argc, char** argv, config** output){
                     }
                     cfg->grouping[index]=current_group;
                     counted_nodes++;
-                    s_elm = strtok_r(NULL, ",", &s2);
+                    s_elm = my_strtok_r(NULL, ",", &s2);
                 }
                 current_group++;
-                s_group=strtok_r(NULL, ":", &s1);
+                s_group=my_strtok_r(NULL, ":", &s1);
             }
             if(counted_nodes!=cfg->number_nodes){
                 fprintf(stderr, "Not all nodes are put into groups! Expected %d, found %d.\n", cfg->number_nodes, counted_nodes);
@@ -386,7 +387,7 @@ bcast:
         //MPI_Type_contiguous(world_size*2, MPI_LONG_LONG_INT, &filetype_vec);
         MPI_File_set_view(fh, (long long)(2*(ull)world_rank * (ull)world_size * sizeof(double)), MPI_DOUBLE, MPI_DOUBLE, "native", MPI_INFO_NULL);
         MPI_File_write_all(fh, perf_vec, 2*world_size, MPI_DOUBLE, MPI_STATUS_IGNORE);
-        MPI_File_set_view(fh, 0, MPI_DOUBLE, MPI_DOUBLE, "native", MPI_INFO_NULL);
+        MPI_File_set_view(fh, 0ll, MPI_DOUBLE, MPI_DOUBLE, "native", MPI_INFO_NULL);
     }
     free(perf_vec);
     MPI_Barrier(MPI_COMM_WORLD);
@@ -394,7 +395,7 @@ bcast:
         
         // main thread read from mpiio and print the output.
         double* perf_mat = malloc(2*(size_t)world_size*(size_t)world_size*sizeof(double));
-        MPI_File_read_at(fh, 0, perf_mat, world_size * world_size * 2, MPI_LONG_LONG_INT, MPI_STATUS_IGNORE);
+        MPI_File_read_at(fh, 0ll, perf_mat, world_size * world_size * 2, MPI_LONG_LONG_INT, MPI_STATUS_IGNORE);
         printf("Send Matrix (MBps):\n");
         for(int i=0; i<world_size; i++){
             for(int j=0; j<world_size; j++){

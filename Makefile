@@ -28,5 +28,5 @@ rr_test:
 clean:
 	rm bench1 bench2 bench3 rr vec.o utils.o rr_io.o rr.o rr_dist/Reduction rr_dist/Validation_mpi RandomGen -f
 clean_mat:
-	rm *.mat matrix -f
+	rm *.mat matrix bench1.out -f
 distclean: clean clean_mat

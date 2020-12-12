@@ -35,6 +35,7 @@ int main(int argc, char** argv){
         Npadded = Nchunk * world_size;
         printf("M=%d N=%d world_size=%d Nchunk=%d Npadded=%d\n", M, N, world_size, Nchunk, Npadded);
         matrix = calloc((size_t)(M * Npadded), sizeof(double));
+	assert(matrix);
         read_matrix("matrix", M, N, Npadded, matrix);
         //fclose(f);
         printf("IO done\n");
@@ -51,7 +52,9 @@ int main(int argc, char** argv){
         MPI_Bcast(&Nchunk, 1, MPI_INT, 0, MPI_COMM_WORLD);
         MPI_Bcast(&Npadded, 1, MPI_INT, 0, MPI_COMM_WORLD);
         ans = calloc((size_t)(M*M+M), sizeof(double));
+	assert(ans);
         pieces = malloc(sizeof(double)*(size_t)M*(size_t)Nchunk);
+	assert(pieces);
     }
     
     MAIN_THREAD {
@@ -82,10 +85,13 @@ int main(int argc, char** argv){
     printf("Finished rank=%d\n", world_rank);
     SUB_THREADS {
         MPI_Reduce(ans, NULL, M*M+M, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
+
     }
     
     MAIN_THREAD{
         MPI_Reduce(MPI_IN_PLACE, ans, M*M+M, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
         end_time=get_time();
         printf("Computation finished in %lf ms.\n", (double)(end_time-start_time)/1000000.0);
         //fprintf(f_alpha, "%d %d\n", M, N);
@@ -96,8 +102,9 @@ int main(int argc, char** argv){
         printf("Writing gamma\n");
         write_matrix("GammasMPI.mat", M, ans);
     }
-
+    printf("Thread %d finish.\n", world_rank);
     
     MPI_Finalize();
     return 0;
 }
+
