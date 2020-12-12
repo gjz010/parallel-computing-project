@@ -9,7 +9,7 @@ bench1: bench1.c vec.o utils.o
 	mpicc $(CFLAGS) -o $@ $^
 bench2: bench2.c vec.o utils.o
 	mpicc $(CFLAGS) -o $@ $^
-bench3: bench3.c
+bench3: bench3.c utils.o vec.o
 	mpicc $(CFLAGS) -o $@ $^
 rr_io.o: rr_io.cpp
 	mpic++ $(CXXFLAGS) -c -o $@ $^
