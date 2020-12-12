@@ -1,5 +1,5 @@
-CFLAGS = -Wall -Wextra -Werror -Wconversion -pedantic -O3
-CXXFLAGS = -Wall -Wextra -Werror -Wconversion -pedantic -O3
+CFLAGS = -Wall -Werror -Wconversion -pedantic -O3 -std=c99
+CXXFLAGS = -Wall -Werror -Wconversion -pedantic -O3
 all: bench1 bench2 bench3 rr rr_dist/Reduction rr_dist/Validation_mpi RandomGen
 vec.o: vec.c
 	mpicc $(CFLAGS) -c -o $@ $^

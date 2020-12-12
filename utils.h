@@ -7,6 +7,7 @@
 #include <mpi.h>
 char * my_strtok_r (char *s, const char *delim, char **save_ptr);
 typedef unsigned long long ull;
+typedef long long ll;
 unsigned int hash(unsigned int x);
 int hash_i(int x);
 unsigned long long get_time();

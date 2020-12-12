@@ -19,7 +19,7 @@ void single_write(MPI_File fh, int offset, int size){
         buffer[i]=(char)hash_i(offset+i);
     }
     unsigned long long start_time=get_time();
-    MPI_File_write_at(fh, offset, buffer, size, MPI_BYTE, MPI_STATUS_IGNORE);
+    MPI_File_write_at(fh, (ll)offset, buffer, size, MPI_BYTE, MPI_STATUS_IGNORE);
     unsigned long long end_time=get_time();
     printf("W world rank %d (offset = %d, size = %d) = %lf (cost time=%lf)\n", world_rank, offset, size, bandwidth(1, size, end_time-start_time), ((double)(end_time-start_time))/1000000000);
     free(buffer);
@@ -32,7 +32,7 @@ void single_read(MPI_File fh, int offset, int size){
     
     char* buffer = malloc((unsigned long)size);
     unsigned long long start_time=get_time();
-    MPI_File_read_at(fh, offset, buffer, size, MPI_BYTE, MPI_STATUS_IGNORE);
+    MPI_File_read_at(fh, (ll)offset, buffer, size, MPI_BYTE, MPI_STATUS_IGNORE);
     unsigned long long end_time=get_time();
     //for(int i=0; i<sizes[world_rank]; i++){
     //    assert(buffer[i] == (char)hash(world_rank * 114514 + i));
@@ -54,7 +54,7 @@ void collective_read(MPI_File fh, int* sizes, MPI_Comm comm){
     
     MPI_Barrier(comm);
     unsigned long long start_time=get_time();
-    MPI_File_read_at_all(fh, offset, buffer, sizes[world_rank], MPI_BYTE, MPI_STATUS_IGNORE);
+    MPI_File_read_at_all(fh, (ll)offset, buffer, sizes[world_rank], MPI_BYTE, MPI_STATUS_IGNORE);
     unsigned long long end_time=get_time();
     for(int i=0; i<sizes[world_rank]; i++){
         assert(buffer[i] == (char)hash_i(world_rank * 114514 + i));
@@ -70,6 +70,8 @@ void collective_write(MPI_File fh, int* sizes, MPI_Comm comm){
     MPI_Comm_size(comm, &world_size);
     int world_rank;
     MPI_Comm_rank(comm, &world_rank);
+    int real_world_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &real_world_rank);
     int offset=0;
     for(int i=0; i<world_rank; i++){
         offset+=sizes[i];
@@ -78,12 +80,13 @@ void collective_write(MPI_File fh, int* sizes, MPI_Comm comm){
     for(int i=0; i<sizes[world_rank]; i++){
         buffer[i] = (char)hash_i(world_rank * 114514 + i);
     }
+    //printf("ColWrite %d\n", real_world_rank);
     MPI_Barrier(comm);
+    //printf("ColWriteB %d\n", real_world_rank);
     unsigned long long start_time=get_time();
-    MPI_File_write_at_all(fh, offset, buffer, sizes[world_rank], MPI_BYTE, MPI_STATUS_IGNORE);
+    MPI_File_write_at_all(fh, (ll)offset, buffer, sizes[world_rank], MPI_BYTE, MPI_STATUS_IGNORE);
     unsigned long long end_time=get_time();
-    int real_world_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &real_world_rank);
+    
     printf("CW world rank %d(local rank = %d, offset = %d, size = %d) = %lf (cost time=%lf)\n", real_world_rank, world_rank, offset, sizes[world_rank], bandwidth(1, sizes[world_rank], end_time-start_time), ((double)(end_time-start_time))/1000000000);
     free(buffer);
     MPI_Barrier(comm);
@@ -144,8 +147,7 @@ int mpi_main(int argc, char** argv){
         }
     }
     MPI_Barrier(MPI_COMM_WORLD);
-    MPI_File fh;
-    MPI_File_open(MPI_COMM_WORLD, path, MPI_MODE_CREATE|MPI_MODE_RDWR, MPI_INFO_NULL, &fh); 
+    
     MAIN_THREAD {
         printf("Opened.\n");
         for(int i=0; i<(int)v.size; i++){
@@ -157,6 +159,8 @@ int mpi_main(int argc, char** argv){
     while(index < v.size){
         if(v.data[index]==0){
             index++;
+            MPI_File fh;
+            MPI_File_open(MPI_COMM_WORLD, path, MPI_MODE_CREATE|MPI_MODE_RDWR, MPI_INFO_NULL, &fh); 
             // Noncollective ops
             int offset=0;
             int size=0;
@@ -164,7 +168,7 @@ int mpi_main(int argc, char** argv){
             ull new_index=index;
             while(v.data[new_index]!=-1){
                 int curr_size=v.data[new_index+1];
-                total_size+=curr_size;
+                total_size+=(curr_size>0?curr_size:-curr_size);
                 new_index+=2;
             }
             while(v.data[index]!=-1){
@@ -193,8 +197,14 @@ int mpi_main(int argc, char** argv){
                 }
             }
             MPI_Barrier(MPI_COMM_WORLD);
-            MAIN_THREAD {end_time=get_time(); printf("Mixed total bandwidth = %lf\n", bandwidth(1, (int)total_size, end_time-start_time));}
+            MAIN_THREAD {end_time=get_time(); printf("Mixed total bandwidth(%d) = %lf\n", total_size, bandwidth(1, (int)total_size, end_time-start_time));}
+            MPI_File_close(&fh);
+            MPI_Barrier(MPI_COMM_WORLD);
         }else if(v.data[index]==1){
+            MPI_Barrier(MPI_COMM_WORLD);
+            //MAIN_THREAD{printf("Coll\n");}
+            MPI_Barrier(MPI_COMM_WORLD);
+            //printf("Coll 1 %d\n", world_rank);
             index++;
             // Collective ops
             int order[world_size];
@@ -217,27 +227,36 @@ int mpi_main(int argc, char** argv){
             index++;
             MPI_Comm new_comm;
             int rank=fork_communicator(world_rank, order, (ull)t, &new_comm);
+            //printf("Coll 2 %d\n", world_rank);
             MPI_Barrier(MPI_COMM_WORLD);
             ull start_time=0;
             ull end_time=0;
 #define FIRST_THREAD if(rank==order[0])
             if(rank!=-1){
+                MPI_File fh;
+                MPI_File_open(new_comm, path, MPI_MODE_CREATE|MPI_MODE_RDWR, MPI_INFO_NULL, &fh); 
                 FIRST_THREAD {start_time=get_time();}
                 collective_write(fh, sizes, new_comm);
                 FIRST_THREAD {end_time=get_time(); printf("CW total bandwidth = %lf\n", bandwidth(1, (int)total_size, end_time-start_time));}
+                //printf("Coll 3 %d\n", world_rank);
                 MPI_Barrier(new_comm);
                 FIRST_THREAD {start_time=get_time();}
                 collective_read(fh, sizes, new_comm);
                 FIRST_THREAD {end_time=get_time(); printf("CR total bandwidth = %lf\n", bandwidth(1, (int)total_size, end_time-start_time));}
+                MPI_Comm_free(&new_comm);
+                MPI_File_close(&fh);
             }
             MPI_Barrier(MPI_COMM_WORLD);
-            MPI_Comm_free(&new_comm);
+            //printf("Coll 4 %d\n", world_rank);
+            
+            
+            MPI_Barrier(MPI_COMM_WORLD);
             
         }else{
             assert(0);
         }
     }
-    MPI_File_close(&fh);
+    
     return 0;
 }
 int main(int argc, char** argv){
