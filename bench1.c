@@ -376,6 +376,8 @@ bcast:
         }
         
         // write the result to binary by mpiio.
+	free(send_data);
+	free(recv_data);
     }
     MPI_Barrier(MPI_COMM_WORLD);
     MAIN_THREAD { printf("Writing output binary file!\n"); }
@@ -409,6 +411,18 @@ bcast:
             for(int j=0; j<world_size; j++){
                 if(i==j) {printf("-\t");continue;}
                 printf("%lf\t", perf_mat[2*world_size*i+j+world_size]);
+            }
+            putchar('\n');
+        }
+        printf("Concatenated Matrix (MBps, upper triangle from recv matrix and lower triangle from send matrix):\n");
+        for(int i=0; i<world_size; i++){
+            for(int j=0; j<world_size; j++){
+                if(i==j) {printf("-\t");continue;}
+		if(i<j){ //recv matrix
+		    printf("%lf\t", perf_mat[2*world_size*i+j+world_size]);
+		}else{
+		    printf("%lf\t", perf_mat[2*world_size*i+j]);
+		}
             }
             putchar('\n');
         }
