@@ -7,6 +7,13 @@
 make
 ```
 
+在神威环境下运行所有测试用例：
+
+```
+./run_all_testcases_sunway.sh
+```
+
+
 
 Bench1 点对点带宽测试
 --------
